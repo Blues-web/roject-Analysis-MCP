@@ -1,0 +1,25 @@
+{
+  "name": "project-analysis-mcp",
+  "version": "5.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "web": "tsx src/web.ts",
+    "test": "tsx tests/test-p0-1.ts && tsx tests/test-p0-2.ts && tsx tests/test-p0-3.ts && tsx tests/test-integration.ts && tsx tests/test-review-fixes.ts",
+    "test:integration": "tsx tests/test-integration.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "tsx": "^4.23.10",
+    "typescript": "^7.0.2"
+  }
+}

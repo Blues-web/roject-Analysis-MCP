@@ -91,12 +91,26 @@ npm test
 
 ### Web 查看界面
 
-Web 界面直接读取 `~/.project-analysis-mcp/knowledge/` 中的知识 JSON，不依赖 MCP stdio 连接。默认地址为 `http://127.0.0.1:9527`，左侧展示项目列表，右侧展示业务总结和洞察记录，顶部支持跨项目模糊搜索。
+Web 界面直接读取 `~/.project-analysis-mcp/knowledge/` 中的知识 JSON，不依赖 MCP stdio 连接。默认地址为 `http://127.0.0.1:9527`。
+
+主要功能：
+- 左侧展示已分析的项目列表，右侧展示业务总结和洞察记录
+- 顶部支持跨项目模糊搜索，命中结果按项目分组展示
+- 侧栏收起后显示项目名称首字，便于快速区分不同应用
+- 窄屏下自动切换为顶部横向项目列表布局
 
 ```bash
 # 自定义端口
 PORT=8080 npm run web
 ```
+
+#### 界面截图
+
+![Web 主界面](./docs/screenshots/web-main.png)
+
+![侧栏收起状态](./docs/screenshots/web-collapsed.png)
+
+![跨项目搜索结果](./docs/screenshots/web-search.png)
 
 ## 📖 使用流程
 
@@ -437,10 +451,17 @@ project-analysis-mcp/
 │   ├── test-p0-2.ts              # P0-2 单元测试：新鲜度检查（13 项）
 │   ├── test-p0-3.ts              # P0-3 单元测试：影响分析（18 项）
 │   ├── test-integration.ts       # 集成测试：完整闭环场景（10 项）
-│   └── test-review-fixes.ts      # 代码审查回归测试（15 项）
+│   └── test-review-fixes.ts      # 回归测试（15 项）
 ├── examples/
 │   ├── usage-examples.md         # 基本用法和配置示例
 │   └── real-usage-records.md     # 真实项目使用记录
+├── web/
+│   ├── index.html                # Web 页面入口
+│   ├── app.js                    # Web 交互逻辑
+│   └── styles.css                # Web 界面样式
+├── docs/
+│   └── screenshots/              # Web 界面截图
+├── CHANGELOG.md                  # 更新日志
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -468,130 +489,11 @@ npx tsc --noEmit
 - P0-2 新鲜度检查：13 项（文件未变、mtime 变内容不变、内容变化、文件删除等）
 - P0-3 影响分析：18 项（简单依赖、链式依赖、循环依赖、风险评分等）
 - 集成测试：10 项（完整闭环、并发安全、端到端流程等）
-- 代码审查回归：15 项（路径归一化、路径穿越防护、批量更新、相似度收紧、原子写入等）
+- 回归测试：15 项（路径归一化、路径穿越防护、批量更新、相似度收紧、原子写入等）
 
 ## 📄 License
 
 ISC
-
-## 🔧 代码审查修复 (Code Review Fixes)
-
-本版本完成了全面的代码审查，修复了以下问题：
-
-### 🔴 Critical (关键修复)
-
-**C1: relatedFiles 路径归一化**
-- **问题**: `record_insight` 存储的 `relatedFiles` 可能是相对路径，导致 `findRelatedInsights` 无法匹配
-- **修复**: `addInsight` 现在将所有 `relatedFiles` 归一化为绝对路径，并在 `findRelatedInsights` 中对两侧路径都进行归一化比较
-- **文件**: `src/utils/knowledge-store.ts`, `src/utils/impact-analyzer.ts`
-- **测试**: `tests/test-review-fixes.ts` - "C1: relatedFiles 归一化为绝对路径"
-
-**C2: quickAnalyzeImpact 性能优化**
-- **问题**: 每次调用都扫描整个项目目录，时间复杂度 O(N×M)（N=项目文件数，M=引用数）
-- **修复**: 改为预先构建文件名索引，查找时直接读取文件并正则匹配，时间复杂度 O(N)
-- **文件**: `src/utils/dependency-graph.ts`
-- **测试**: `tests/test-p0-3.ts` - 所有现有测试继续通过
-
-**C3: quickAnalyzeImpact 误匹配问题**
-- **问题**: 使用简单字符串包含匹配，导致 `utils.js` 匹配到 `my-utils.js`
-- **修复**: 添加路径边界检查（`/` 或开头），要求完整文件名匹配
-- **文件**: `src/utils/dependency-graph.ts`
-- **测试**: `tests/test-p0-3.ts` - "简单依赖: A → B" 等
-
-### 🟠 High (重要修复)
-
-**H1: 路径穿越防护**
-- **问题**: `analyze_impact` 可以分析项目目录外的文件（如 `/etc/passwd`）
-- **修复**: 添加 `validateTargetPath` 检查，确保目标文件必须在项目目录内
-- **文件**: `src/utils/impact-analyzer.ts`
-- **测试**: `tests/test-review-fixes.ts` - "H1: 路径穿越防护"
-
-**H3: snapshot 一致性**
-- **问题**: 更新 Insight 时，新的 `relatedFiles` 替换旧的，但 `fileSnapshots` 没有同步更新
-- **修复**: 更新时根据新的 `relatedFiles` 过滤旧的 `fileSnapshots`，只保留仍然相关的快照
-- **文件**: `src/utils/knowledge-store.ts`
-- **测试**: `tests/test-review-fixes.ts` - "H3: 更新 Insight 时 snapshot 与 relatedFiles 一致"
-
-**H4: 批量更新性能**
-- **问题**: `search_insights` 检查新鲜度时，每条 Insight 都调用 `updateInsightFreshness`，导致多次文件写入
-- **修复**: 新增 `batchUpdateFreshness` 函数，一次性更新多条 Insight，只写入一次文件
-- **文件**: `src/utils/knowledge-store.ts`, `src/index.ts`
-- **测试**: `tests/test-review-fixes.ts` - "H4: 批量更新 freshness"
-
-### 🟡 Medium (中等修复)
-
-**M2: listAllKnowledge 数据迁移**
-- **问题**: `listAllKnowledge` 返回旧版本知识时，缺少 P0-1 新增字段
-- **修复**: 在 `listAllKnowledge` 中对返回的知识执行内存迁移，确保字段完整
-- **文件**: `src/utils/knowledge-store.ts`
-- **测试**: `tests/test-review-fixes.ts` - "M2: listAllKnowledge 返回完整字段"
-
-**M3: freshness 缓存**
-- **问题**: 同一文件中多个 Insight 检查新鲜度时，重复读取和计算 hash
-- **修复**: 新增 `createFileStatCache` 和 `createFileHashCache`，在 `checkInsightFreshness` 中支持缓存
-- **文件**: `src/utils/freshness.ts`, `src/utils/impact-analyzer.ts`
-- **测试**: `tests/test-review-fixes.ts` - "M3: freshness 缓存避免重复计算"
-
-**M5: unknown 语义修复**
-- **问题**: `updateInsightFreshness` 在状态为 `unknown` 时仍然更新 `lastVerifiedAt`，语义不正确
-- **修复**: `unknown` 状态不更新 `lastVerifiedAt`，只有 `fresh` 和 `stale` 才更新
-- **文件**: `src/utils/knowledge-store.ts`
-- **测试**: `tests/test-review-fixes.ts` - "M5: unknown 不更新 lastVerifiedAt"
-
-**M6: 相似度判断收紧**
-- **问题**: `isQuestionSimilar` 使用简单子串包含，导致"认证"匹配"JWT认证流程详细说明"
-- **修复**: 添加长度比例检查（>0.5）和 Jaccard 相似度（>0.75），收紧匹配条件
-- **文件**: `src/utils/knowledge-store.ts`
-- **测试**: `tests/test-review-fixes.ts` - "M6: 相似度判断收紧"
-
-**M7: 原子写入**
-- **问题**: `saveKnowledge` 直接写入文件，写入过程中崩溃会导致数据损坏
-- **修复**: 先写入临时文件 `.tmp`，再使用 `fs.renameSync` 原子替换
-- **文件**: `src/utils/knowledge-store.ts`
-- **测试**: `tests/test-review-fixes.ts` - "M7: 原子写入"
-
-**M8: 目录扫描去重**
-- **问题**: `quickAnalyzeImpact` 中 `scanDirs` 包含重复目录，导致同一文件被扫描多次
-- **修复**: 改为只扫描项目根目录一次，递归遍历所有子目录
-- **文件**: `src/utils/dependency-graph.ts`
-- **测试**: `tests/test-p0-3.ts` - 所有现有测试继续通过
-
-### 🔵 Low (次要修复)
-
-**L1: 隐藏文件过滤**
-- **问题**: `scanFiles` 没有过滤 `.git`、`.DS_Store` 等隐藏文件
-- **修复**: 添加 `EXCLUDED_DIRS` 和 `EXCLUDED_FILES` 集合，跳过隐藏文件
-- **文件**: `src/utils/scanner.ts`
-
-**L2: hashSkipped 标记**
-- **问题**: 大文件或二进制文件跳过 hash 计算，但没有标记原因
-- **修复**: `FileSnapshot` 新增 `hashSkipped` 字段，标记跳过原因（`too_large`、`binary`、`error`）
-- **文件**: `src/utils/scanner.ts`
-
-**L3: 死代码清理**
-- **问题**: `dependency-graph.ts` 中定义了 `VUE_COMPONENT_PATTERNS` 但未使用
-- **修复**: 删除未使用的代码
-- **文件**: `src/utils/dependency-graph.ts`
-
-**L4: 风险权重递减**
-- **问题**: `staleInsights` 权重为 +8/条，10 条 stale 就超过 100 分，导致分数无限增长
-- **修复**: 前 3 条 stale 按 +8 计算，后续按 +3 递减，总分上限 100
-- **文件**: `src/utils/impact-analyzer.ts`
-- **测试**: `tests/test-review-fixes.ts` - "L4: stale 知识风险权重递减"
-
-### 🟣 P3 (额外优化)
-
-**M4: 并行新鲜度检查**
-- **优化**: `search_insights` 和 `get_full_context` 中的新鲜度检查改为 `Promise.all` 并行执行
-- **文件**: `src/index.ts`
-
-**L7: Tool 描述优化**
-- **优化**: `search_insights` 的工具描述建议默认使用 `checkFreshness=true`
-- **文件**: `src/index.ts`
-
-**M1: edges 字段修正**
-- **修复**: `traverseDependency` 中 `edges` 的 `from/to` 字段现在正确反映实际的引用方向
-- **文件**: `src/utils/dependency-graph.ts`
 
 ## 🧪 测试统计
 
@@ -601,7 +503,7 @@ ISC
 - **P0-2 新鲜度检查**: 13 项（文件未变、mtime 变内容不变、内容变化、文件删除等）
 - **P0-3 影响分析**: 18 项（简单依赖、链式依赖、循环依赖、风险评分等）
 - **集成测试**: 10 项（完整闭环、并发安全、端到端流程等）
-- **代码审查回归**: 15 项（路径归一化、路径穿越防护、批量更新、相似度收紧、原子写入等）
+- **回归测试**: 15 项（路径归一化、路径穿越防护、批量更新、相似度收紧、原子写入等）
 
 运行测试：
 
@@ -611,14 +513,16 @@ npm test
 
 ## 📊 版本历史
 
-### v5.1.0 (当前版本) - 代码审查修复
+完整变更记录请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v5.1.0 (当前版本) - 健壮性与性能优化
 
 - 🔧 修复 3 个 Critical 问题（C1/C2/C3）
 - 🔧 修复 3 个 High 问题（H1/H3/H4）
 - 🔧 修复 5 个 Medium 问题（M2/M3/M5/M6/M7/M8）
 - 🔧 修复 4 个 Low 问题（L1/L2/L3/L4）
 - 🔧 3 个额外优化（M4/L7/M1）
-- 🧪 新增 15 项代码审查回归测试
+- 🧪 新增 15 项回归测试
 - 📊 测试总数从 57 项增加到 72 项
 
 ### v5.0.0 - P0-3 影响范围分析

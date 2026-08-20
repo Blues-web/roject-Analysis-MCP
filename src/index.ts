@@ -27,11 +27,20 @@ import {
   analyzeImpact,
   formatImpactAnalysis,
 } from "./utils/impact-analyzer.js";
+import { registerProjectAnalyzerTools } from "./tools/projectAnalyzer.js";
+import { registerToolGeneratorTools } from "./tools/toolRegistry.js";
+import { registerWorkflowGeneratorTools } from "./tools/workflowRegistry.js";
+import { registerAgentRuntimeTools } from "./tools/agentRuntime.js";
 
 const server = new McpServer({
   name: "project-analysis",
-  version: "5.0.0",
+  version: "5.7.0",
 });
+
+registerProjectAnalyzerTools(server);
+registerToolGeneratorTools(server);
+registerWorkflowGeneratorTools(server);
+registerAgentRuntimeTools(server);
 
 // ============ 工具1: 分析项目 ============
 server.tool(

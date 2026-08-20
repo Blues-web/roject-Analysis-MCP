@@ -350,6 +350,25 @@ svg {
   white-space: nowrap;
 }
 
+.ai-entry {
+  margin-left: auto;
+  height: 36px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ai-entry:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .content {
   width: 100%;
   max-width: 1120px;

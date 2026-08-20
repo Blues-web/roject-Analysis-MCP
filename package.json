@@ -1,13 +1,17 @@
 {
   "name": "project-analysis-mcp",
-  "version": "5.1.0",
+  "version": "5.7.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "tsx src/index.ts",
     "web": "tsx src/web.ts",
-    "test": "tsx tests/test-p0-1.ts && tsx tests/test-p0-2.ts && tsx tests/test-p0-3.ts && tsx tests/test-integration.ts && tsx tests/test-review-fixes.ts",
-    "test:integration": "tsx tests/test-integration.ts"
+    "test": "tsx tests/test-p0-1.ts && tsx tests/test-p0-2.ts && tsx tests/test-p0-3.ts && tsx tests/test-project-analyzer.ts && tsx tests/test-tool-generator.ts && tsx tests/test-workflow-generator.ts && tsx tests/test-agent-runtime.ts && tsx tests/test-integration.ts && tsx tests/test-review-fixes.ts",
+    "test:integration": "tsx tests/test-integration.ts",
+    "test:analyzer": "tsx tests/test-project-analyzer.ts",
+    "test:tools": "tsx tests/test-tool-generator.ts",
+    "test:workflows": "tsx tests/test-workflow-generator.ts",
+    "test:agent": "tsx tests/test-agent-runtime.ts"
   },
   "keywords": [],
   "author": "",

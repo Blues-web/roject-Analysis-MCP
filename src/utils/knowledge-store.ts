@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { FileSnapshot } from "./scanner.js";
+import type { ProjectAnalysis } from "../analyzer/types.js";
 
 // 知识存储目录
 const KNOWLEDGE_DIR = path.join(
@@ -10,7 +11,7 @@ const KNOWLEDGE_DIR = path.join(
 );
 
 // 当前 schema 版本
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 // ============ 类型定义 ============
 
@@ -26,6 +27,7 @@ export interface ProjectKnowledge {
   lastUpdated: string;       // 最后更新时间
   insights: Insight[];       // 洞察记录列表
   schemaVersion?: number;    // 数据结构版本（v2 新增，缺失视为 v1）
+  analysis?: ProjectAnalysis; // Project Analyzer 生成的 AI 可操作知识模型
 }
 
 // 洞察记录

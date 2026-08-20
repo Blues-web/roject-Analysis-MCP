@@ -2,6 +2,8 @@
 
 一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的**项目知识管理服务器**，用于在 AI 编程助手中持久化存储和检索项目分析结果。
 
+> 总控开发上下文见 [AGENT.md](./AGENT.md)，后续开发以该文件为总纲。
+
 ## 🎯 项目简介
 
 在 AI 辅助编程过程中，我们经常需要让 AI 理解项目的业务逻辑和架构设计。然而每次对话都是"从零开始"，AI 无法记住之前分析过的内容。
@@ -19,6 +21,10 @@
 - **自动去重** — 相似问题自动合并更新，避免知识冗余
 - **持久化存储** — 知识以 JSON 文件形式保存在 `~/.project-analysis-mcp/knowledge/` 目录
 - **旧数据兼容** — Schema 版本自动迁移，升级不影响已有知识
+- **Project Analyzer** — 自动静态分析 Web 项目，生成模块、页面、API、实体、权限、业务能力、状态和工作流
+- **Workflow Generator** — 自动组合 Tool，生成可编排的业务流程
+- **Agent Runtime** — 统一 LLM Provider，驱动意图理解、Tool/Workflow 选择和参数化执行
+- **AI 操作层 Web UI** — 通过自然语言对话直接操作当前项目，展示 Tool 过程、参数、确认和结果
 - **代码搜索** — 在指定项目目录中按关键词搜索代码文件
 
 ## 🛠️ 提供的工具（Tools）
@@ -26,6 +32,22 @@
 | 工具名 | 说明 |
 |---|---|
 | `analyze_project` | 分析项目并记录业务总结。首次调用创建知识库，后续调用更新业务总结 |
+| `analyze_project_static` | 自动静态分析 Web 项目，生成或增量更新 AI 可操作 Project Knowledge |
+| `get_project_analysis` | 获取指定项目已生成的 Project Knowledge 结构化 JSON |
+| `generate_project_tools` | 根据业务能力生成 AI Tool 并写入 Tool Registry |
+| `list_registered_tools` | 列出项目已注册的 AI Tool |
+| `get_registered_tool` | 获取单个已注册 Tool 的完整定义 |
+| `get_tool_registry` | 获取项目完整 Tool Registry JSON |
+| `generate_project_workflows` | 根据 Tool Registry 和 Project Knowledge 生成业务 Workflow |
+| `list_registered_workflows` | 列出项目已注册的 Workflow |
+| `get_registered_workflow` | 获取单个 Workflow 的完整结构化定义 |
+| `get_workflow_registry` | 获取项目完整 Workflow Registry JSON |
+| `configure_llm_provider` | 配置统一 LLM Provider，支持 OpenAI 和 OpenAI Compatible API |
+| `get_llm_config` | 获取当前 LLM Provider 配置（API Key 脱敏） |
+| `agent_chat` | 向 Agent Runtime 发送用户消息并执行 Tool/Workflow |
+| `agent_list_sessions` | 列出 Agent 会话 |
+| `agent_get_session` | 获取 Agent 会话上下文 |
+| `agent_list_execution_logs` | 获取 Agent 执行日志 |
 | `record_insight` | 记录对项目代码的业务分析洞察（架构、功能、API、数据流等），支持分类、标签、符号、模块、API 关联，自动生成文件快照 |
 | `search_insights` | 搜索已有的洞察记录以复用历史分析，可选启用新鲜度检查（checkFreshness） |
 | `get_project_overview` | 获取项目的完整概览，包括业务总结、洞察统计（按分类/状态） |
@@ -36,6 +58,137 @@
 | `analyze_impact` | 分析修改某文件的影响范围，包含直接/间接引用、关联知识（含新鲜度）、风险评分 |
 | `get_full_context` | 【整合工具】一次性获取某个问题的完整上下文：搜索知识 + 检查新鲜度 + 影响分析 |
 | `search_code` | 在项目中按关键词搜索代码文件（实验性功能） |
+
+## 🤖 Project Analyzer
+
+`analyze_project_static` 接收一个 Web 项目目录，自动建立 AI 可操作知识模型：
+
+```json
+{
+  "project": {},
+  "modules": [],
+  "pages": [],
+  "apis": [],
+  "entities": [],
+  "permissions": [],
+  "capabilities": [],
+  "workflows": [],
+  "states": []
+}
+```
+
+它不会执行项目代码，也不会直接调用项目 API。分析结果保存在原 Project Knowledge 文件中，重复分析时按稳定 ID 增量合并。
+
+## 🧰 Tool Generator
+
+`generate_project_tools` 根据 Project Knowledge 中的业务能力生成 AI Tool，例如 `POST /plan/create` 会生成业务 Tool `create_plan`，而不是 `post_plan_create`。
+
+每个 Tool 包含：
+
+```json
+{
+  "name": "create_plan",
+  "description": "",
+  "confidence": "high",
+  "module": "Plan",
+  "businessPurpose": "",
+  "sourceFiles": [],
+  "sourceApis": [],
+  "sourcePages": [],
+  "sourceMethods": [],
+  "inputSchema": {},
+  "outputSchema": {},
+  "apiMapping": {},
+  "permission": "plan:create",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "preconditions": [],
+  "postconditions": [],
+  "relatedTools": [],
+  "relatedPages": []
+}
+```
+
+Tool 只描述参数映射、权限、风险、确认策略和原系统 API 调用方式；真正执行时仍调用原有业务 API，不复制业务规则，不绕过原系统权限。每个 Tool 都保留 `sourceFiles`、`sourceApis`、`sourcePages`、`sourceMethods` 和 `confidence`，方便人工追溯和判断可信度。
+
+## 🔀 Workflow Generator
+
+`generate_project_workflows` 根据 Tool Registry 和 Project Knowledge 自动组合原子 Tool。例如用户意图“创建一个明天的巡检计划并提交审批”，会生成：
+
+```text
+create_plan → submit_plan
+```
+
+对应 Workflow：
+
+```json
+{
+  "name": "create_and_submit_plan",
+  "confidence": "high",
+  "sourceTools": ["create_plan", "submit_plan"],
+  "sourcePages": [],
+  "steps": [
+    {
+      "tool": "create_plan",
+      "output": "plan"
+    },
+    {
+      "tool": "submit_plan",
+      "input": {
+        "planId": "$plan.id"
+      }
+    }
+  ]
+}
+```
+
+Workflow 使用结构化定义，不写死执行代码。支持条件分支、参数传递、前置条件、失败处理、用户确认、暂停等待输入和继续执行，并保留 `confidence`、`sourceTools`、`sourcePages` 来源信息。
+
+## 🤖 Agent Runtime
+
+Agent Runtime 使用统一 `LLMProvider` 接入 OpenAI 或任意 OpenAI Compatible API：
+
+```json
+{
+  "provider": "openai-compatible",
+  "baseURL": "https://api.example.com/v1",
+  "apiKey": "your-key",
+  "model": "your-model"
+}
+```
+
+执行流程：
+
+```text
+User → Agent → LLM → Tool/Workflow Selection
+    → Parameter Validation → Permission → Confirmation
+    → Tool Execution → Result → LLM → User
+```
+
+Agent Runtime 支持：
+- 多轮对话和会话上下文
+- LLM Tool Call
+- 多 Tool 连续调用
+- Workflow 编排
+- 参数缺失询问
+- 用户确认
+- 权限检查
+- 错误重试
+- 执行日志
+
+## 🖥️ AI 操作层 Web UI
+
+访问 `http://127.0.0.1:9527/ai.html` 进入 AI 操作层。
+
+界面能力：
+- 自然语言对话操作当前项目
+- Tool/Workflow 执行过程展示
+- Tool 参数展示
+- 用户确认/取消
+- 执行结果表格和错误提示
+- 会话历史与执行历史
+
+AI UI 不复制原系统业务页面；复杂页面仍通过后续 `open_page` / `open_detail` / `navigate` 类能力跳转到原系统页面。
 
 ## 📦 安装
 
@@ -91,7 +244,7 @@ npm test
 
 ### Web 查看界面
 
-Web 界面直接读取 `~/.project-analysis-mcp/knowledge/` 中的知识 JSON，不依赖 MCP stdio 连接。默认地址为 `http://127.0.0.1:9527`。
+Web 界面直接读取 `~/.project-analysis-mcp/knowledge/` 中的知识 JSON，不依赖 MCP stdio 连接。默认监听 `0.0.0.0:9527`，本机访问 `http://127.0.0.1:9527`。
 
 主要功能：
 - 左侧展示已分析的项目列表，右侧展示业务总结和洞察记录
@@ -102,6 +255,9 @@ Web 界面直接读取 `~/.project-analysis-mcp/knowledge/` 中的知识 JSON，
 ```bash
 # 自定义端口
 PORT=8080 npm run web
+
+# 仅本机访问
+HOST=127.0.0.1 npm run web
 ```
 
 #### 界面截图
@@ -437,9 +593,36 @@ MCP **不会**自己调用大模型。MCP 负责提供数据，AI Agent 负责�
 ```
 project-analysis-mcp/
 ├── src/
-│   ├── index.ts                  # MCP 服务器入口，注册所有工具（10个 Tool）
+│   ├── index.ts                  # MCP 服务器入口，注册所有工具
+│   ├── analyzer/
+│   │   ├── project-analyzer.ts   # Project Analyzer 编排与增量合并
+│   │   ├── parsers.ts            # 框架/路由/页面/API/Store/权限/状态解析
+│   │   ├── infer.ts              # 业务能力、工作流推断
+│   │   ├── types.ts              # Project Knowledge 结构化模型
+│   │   └── utils.ts              # 稳定 ID 和工具函数
 │   ├── tools/
+│   │   ├── projectAnalyzer.ts    # analyze_project_static / get_project_analysis
+│   │   ├── toolRegistry.ts       # Tool 生成与 Registry MCP 工具
+│   │   ├── workflowRegistry.ts   # Workflow 生成与 Registry MCP 工具
 │   │   └── searchCode.ts         # 代码搜索工具（实验性）
+│   ├── registry/
+│   │   ├── tool-generator.ts     # ToolDefinition 生成逻辑
+│   │   ├── tool-registry.ts      # Tool Registry 持久化
+│   │   └── types.ts              # Tool / Registry 数据模型
+│   ├── workflow/
+│   │   ├── workflow-generator.ts # Workflow 推断和结构化定义
+│   │   ├── workflow-store.ts     # Workflow Registry 持久化
+│   │   └── types.ts              # Workflow 数据模型
+│   ├── agent/
+│   │   ├── agent-runtime.ts      # Agent 对话编排
+│   │   ├── session-store.ts      # Agent 会话持久化
+│   │   ├── log-store.ts          # 执行日志
+│   │   ├── tool-executor.ts      # 原系统 API 执行器
+│   │   ├── workflow-executor.ts  # Workflow 执行器
+│   │   └── types.ts              # Agent 数据模型
+│   ├── provider/
+│   │   ├── llm-provider.ts       # OpenAI Compatible LLMProvider
+│   │   └── config-store.ts       # LLM Provider 配置
 │   └── utils/
 │       ├── knowledge-store.ts    # 知识存储核心逻辑 + 数据迁移
 │       ├── scanner.ts            # 文件扫描 + 快照生成
@@ -450,6 +633,10 @@ project-analysis-mcp/
 │   ├── test-p0-1.ts              # P0-1 单元测试：知识模型（16 项）
 │   ├── test-p0-2.ts              # P0-2 单元测试：新鲜度检查（13 项）
 │   ├── test-p0-3.ts              # P0-3 单元测试：影响分析（18 项）
+│   ├── test-project-analyzer.ts  # Project Analyzer 测试（2 项）
+│   ├── test-tool-generator.ts    # Tool Generator / Registry 测试（2 项）
+│   ├── test-workflow-generator.ts # Workflow Generator 测试（2 项）
+│   ├── test-agent-runtime.ts     # Agent Runtime 测试（3 项）
 │   ├── test-integration.ts       # 集成测试：完整闭环场景（10 项）
 │   └── test-review-fixes.ts      # 回归测试（15 项）
 ├── examples/
@@ -458,7 +645,10 @@ project-analysis-mcp/
 ├── web/
 │   ├── index.html                # Web 页面入口
 │   ├── app.js                    # Web 交互逻辑
-│   └── styles.css                # Web 界面样式
+│   ├── styles.css                # Web 界面样式
+│   ├── ai.html                   # AI 操作层页面
+│   ├── ai.js                     # AI 操作层交互
+│   └── ai.css                    # AI 操作层样式
 ├── docs/
 │   └── screenshots/              # Web 界面截图
 ├── CHANGELOG.md                  # 更新日志
@@ -477,7 +667,7 @@ project-analysis-mcp/
 ## 🧪 测试
 
 ```bash
-# 运行全部测试（72 项）
+# 运行全部测试（81 项）
 npm test
 
 # TypeScript 类型检查
@@ -488,6 +678,10 @@ npx tsc --noEmit
 - P0-1 知识模型：16 项（快照生成、旧数据迁移、字段去重等）
 - P0-2 新鲜度检查：13 项（文件未变、mtime 变内容不变、内容变化、文件删除等）
 - P0-3 影响分析：18 项（简单依赖、链式依赖、循环依赖、风险评分等）
+- Project Analyzer：2 项（结构化知识生成、增量合并）
+- Tool Generator / Registry：2 项（业务 Tool 生成、增量注册）
+- Workflow Generator：2 项（Tool 组合、条件分支）
+- Agent Runtime：3 项（Tool 执行、确认、Workflow 连续调用）
 - 集成测试：10 项（完整闭环、并发安全、端到端流程等）
 - 回归测试：15 项（路径归一化、路径穿越防护、批量更新、相似度收紧、原子写入等）
 
@@ -497,11 +691,15 @@ ISC
 
 ## 🧪 测试统计
 
-**总计: 72 项测试**
+**总计: 81 项测试**
 
 - **P0-1 知识模型**: 16 项（快照生成、旧数据迁移、字段去重等）
 - **P0-2 新鲜度检查**: 13 项（文件未变、mtime 变内容不变、内容变化、文件删除等）
 - **P0-3 影响分析**: 18 项（简单依赖、链式依赖、循环依赖、风险评分等）
+- **Project Analyzer**: 2 项（结构化知识生成、增量合并）
+- **Tool Generator / Registry**: 2 项（业务 Tool 生成、增量注册）
+- **Workflow Generator**: 2 项（Tool 组合、条件分支）
+- **Agent Runtime**: 3 项（Tool 执行、确认、Workflow 连续调用）
 - **集成测试**: 10 项（完整闭环、并发安全、端到端流程等）
 - **回归测试**: 15 项（路径归一化、路径穿越防护、批量更新、相似度收紧、原子写入等）
 
@@ -515,7 +713,60 @@ npm test
 
 完整变更记录请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
-### v5.1.0 (当前版本) - 健壮性与性能优化
+### v5.7.0 (当前版本) - AI 操作层 Web UI
+
+- ✨ 新增 `/ai.html` AI 操作层页面
+- 💬 支持自然语言对话、项目选择、会话历史
+- 🧰 展示 Tool/Workflow 执行过程、参数、结果表格和错误提示
+- 🔐 支持用户确认和取消
+- 📋 展示执行日志与历史会话
+- 🔗 从知识库页面可直接进入 AI 操作层
+
+### v5.6.0 - Business Semantics + Confidence + Provenance
+
+- ✨ Capability/Tool/Workflow/Permission 增加 `confidence: high | medium | low`
+- 🔍 可明确从代码确认的映射标记为 `high`，推断关系标记为 `medium`，无法确认标记为 `low`
+- 🧾 Tool 增加 `sourceFiles`、`sourceApis`、`sourcePages`、`sourceMethods` 溯源字段
+- 🔀 Workflow 增加 `confidence`、`sourceTools`、`sourcePages` 来源信息
+- 🧪 增强 Tool/Workflow 溯源测试
+
+### v5.5.0 - Agent Runtime
+
+- ✨ 新增统一 `LLMProvider`，支持 OpenAI / OpenAI Compatible API
+- ✨ 新增 `configure_llm_provider`、`agent_chat`、会话和日志工具
+- 🤖 Agent 自动完成意图理解、Tool/Workflow 选择、参数校验、权限检查、确认和执行
+- 💬 支持多轮对话、上下文、Tool Call、多 Tool 连续调用、Workflow 编排和错误重试
+- 📋 执行日志独立持久化，便于审计和调试
+- 🧪 新增 Agent Runtime 测试，测试总数增加到 81 项
+
+### v5.4.0 - Workflow Generator
+
+- ✨ 新增 `generate_project_workflows`、`list_registered_workflows`、`get_registered_workflow`、`get_workflow_registry`
+- 🔀 自动识别连续 Tool 调用、状态流转、页面按钮顺序、API 关系和参数依赖
+- 🧩 生成 `create_and_submit_plan` 这类结构化组合流程
+- 📋 Workflow 支持条件分支、参数传递、用户确认、暂停等待输入和继续执行
+- 🗂️ Workflow Registry 独立持久化，支持版本保留和增量注册
+- 🧪 新增 Workflow Generator 测试，测试总数增加到 78 项
+
+### v5.3.0 - Business Capability → Tool Generator
+
+- ✨ 新增 `generate_project_tools`、`list_registered_tools`、`get_registered_tool`、`get_tool_registry`
+- 🧰 根据业务能力生成 `create_plan` 这类业务语义 Tool，而非 API 方法名
+- 📋 Tool 包含 inputSchema、outputSchema、apiMapping、权限、风险等级、确认策略、前置/后置条件和关联页面
+- 🔐 保留原系统 API 真实调用方式，不复制业务逻辑，不绕过原系统权限
+- 🗂️ Tool Registry 独立持久化，支持版本保留和增量注册
+- 🧪 新增 Tool Generator 测试，测试总数增加到 76 项
+
+### v5.2.0 - Project Analyzer
+
+- ✨ 新增 `analyze_project_static` 自动静态分析工具
+- ✨ 新增 `get_project_analysis` 结构化知识读取工具
+- 🧩 识别项目框架、路由、页面、Components、API 层、Store、权限、数据模型和配置文件
+- 🔄 从页面按钮、方法、API、参数和状态推断业务能力与工作流
+- 📦 Project Knowledge 结构化保存，重新分析时增量合并，不覆盖已有知识
+- 🧪 新增 Project Analyzer 测试，测试总数增加到 74 项
+
+### v5.1.0 - 健壮性与性能优化
 
 - 🔧 修复 3 个 Critical 问题（C1/C2/C3）
 - 🔧 修复 3 个 High 问题（H1/H3/H4）

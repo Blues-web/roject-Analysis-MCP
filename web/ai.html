@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI 操作层</title>
+    <link rel="stylesheet" href="/ai.css">
+  </head>
+  <body>
+    <div class="ai-shell">
+      <header class="ai-header">
+        <div class="ai-brand">
+          <span class="ai-brand-mark">AI</span>
+          <div>
+            <div class="ai-title">AI 操作层</div>
+            <div class="ai-subtitle">自然语言驱动原系统业务能力</div>
+          </div>
+        </div>
+        <div class="ai-header-actions">
+          <label class="ai-select-wrap">
+            <span>项目</span>
+            <select id="projectSelect"></select>
+          </label>
+          <button class="ai-button" id="newSessionButton" type="button">新会话</button>
+          <button class="ai-button" id="configButton" type="button">LLM 配置</button>
+          <a class="ai-link" href="/">知识库</a>
+        </div>
+      </header>
+
+      <main class="ai-main">
+        <section class="ai-chat-column">
+          <div class="ai-chat-scroll" id="chatLog" aria-live="polite"></div>
+
+          <div class="ai-confirmation" id="confirmationPanel" hidden></div>
+
+          <form class="ai-composer" id="chatForm">
+            <textarea id="messageInput" rows="2" placeholder="例如：查询我最近创建的计划，并把第二个计划提交审批" autocomplete="off"></textarea>
+            <button class="ai-send" id="sendButton" type="submit">发送</button>
+          </form>
+        </section>
+
+        <aside class="ai-side-column">
+          <section class="ai-panel">
+            <div class="ai-panel-head">
+              <h2>执行历史</h2>
+              <button class="ai-text-button" id="refreshHistoryButton" type="button">刷新</button>
+            </div>
+            <div class="ai-session-list" id="sessionList"></div>
+          </section>
+          <section class="ai-panel">
+            <div class="ai-panel-head">
+              <h2>执行过程</h2>
+              <span id="sessionStatus">未开始</span>
+            </div>
+            <div class="ai-log-list" id="logList"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div class="ai-modal-backdrop" id="configModal" hidden>
+      <div class="ai-modal">
+        <div class="ai-modal-head">
+          <h2>LLM Provider 配置</h2>
+          <button class="ai-icon-button" id="closeConfigButton" type="button" aria-label="关闭">×</button>
+        </div>
+        <form id="configForm" class="ai-config-form">
+          <label>Provider<input name="provider" placeholder="openai / openai-compatible" required></label>
+          <label>Base URL<input name="baseURL" placeholder="https://api.openai.com/v1" required></label>
+          <label>API Key<input name="apiKey" type="password" placeholder="API Key" required></label>
+          <label>Model<input name="model" placeholder="gpt-4o-mini" required></label>
+          <label>原系统 API Base URL<input name="apiBaseURL" placeholder="https://business-api.example.com"></label>
+          <label>原系统 API Token<input name="apiToken" type="password" placeholder="可选"></label>
+          <button class="ai-button ai-button-primary" type="submit">保存配置</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="ai-toast" id="toast" role="status"></div>
+    <script src="/ai.js" defer></script>
+  </body>
+</html>

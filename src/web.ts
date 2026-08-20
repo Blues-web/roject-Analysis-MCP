@@ -8,11 +8,24 @@ import {
 } from "./utils/knowledge-store.js";
 import type { ProjectKnowledge } from "./utils/knowledge-store.js";
 import { searchKnowledge } from "./utils/knowledge-search.js";
+import { runAgentTurn } from "./agent/agent-runtime.js";
+import {
+  listSessions,
+  loadSession,
+} from "./agent/session-store.js";
+import { listExecutionLogs } from "./agent/log-store.js";
+import {
+  loadAgentConfig,
+  maskAgentConfig,
+  saveAgentConfig,
+} from "./provider/config-store.js";
+import { loadToolRegistry } from "./registry/tool-registry.js";
+import { loadWorkflowRegistry } from "./workflow/workflow-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(__dirname, "..", "web");
 const PORT = Number(process.env.PORT || 9527);
-const HOST = process.env.HOST || "127.0.0.1";
+const HOST = process.env.HOST || "0.0.0.0";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -35,6 +48,27 @@ function sendJson(
     "Cache-Control": "no-store",
   });
   res.end(body);
+}
+
+function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", chunk => {
+      raw += chunk;
+      if (raw.length > 2 * 1024 * 1024) {
+        reject(new Error("request body too large"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      try {
+        resolve(raw ? JSON.parse(raw) as Record<string, unknown> : {});
+      } catch {
+        reject(new Error("invalid_json"));
+      }
+    });
+    req.on("error", reject);
+  });
 }
 
 function sortByRecordedAtDesc(
@@ -130,6 +164,92 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === "/api/llm/config") {
+    if (req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const existing = loadAgentConfig();
+        const provider = String(body.provider || "");
+        const baseURL = String(body.baseURL || "");
+        const apiKey = body.apiKey && body.apiKey !== "***"
+          ? String(body.apiKey)
+          : existing?.apiKey || "";
+        const model = String(body.model || "");
+        if (!provider || !baseURL || !apiKey || !model) {
+          sendJson(res, 400, { error: "provider/baseURL/apiKey/model are required" });
+          return;
+        }
+        const config = saveAgentConfig({
+          provider,
+          baseURL,
+          apiKey,
+          model,
+          apiBaseURL: body.apiBaseURL ? String(body.apiBaseURL) : undefined,
+          apiToken: body.apiToken && body.apiToken !== "***"
+            ? String(body.apiToken)
+            : existing?.apiToken,
+          allowedPermissions: Array.isArray(body.allowedPermissions)
+            ? (body.allowedPermissions as string[])
+            : undefined,
+          maxIterations: typeof body.maxIterations === "number" ? body.maxIterations : undefined,
+          timeoutMs: typeof body.timeoutMs === "number" ? body.timeoutMs : undefined,
+          temperature: typeof body.temperature === "number" ? body.temperature : undefined,
+          retryCount: typeof body.retryCount === "number" ? body.retryCount : undefined,
+        });
+        sendJson(res, 200, { config: maskAgentConfig(config) });
+      } catch (error) {
+        sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    const config = loadAgentConfig();
+    sendJson(res, 200, { config: config ? maskAgentConfig(config) : null });
+    return;
+  }
+
+  if (pathname === "/api/agent/chat" && req.method === "POST") {
+    try {
+      const body = await readJsonBody(req);
+      const projectName = String(body.projectName || "");
+      const message = String(body.message || "");
+      if (!projectName || !message) {
+        sendJson(res, 400, { error: "projectName and message are required" });
+        return;
+      }
+      const result = await runAgentTurn({
+        projectName,
+        message,
+        sessionId: body.sessionId ? String(body.sessionId) : undefined,
+      });
+      sendJson(res, 200, { result });
+    } catch (error) {
+      sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) });
+    }
+    return;
+  }
+
+  if (pathname === "/api/agent/sessions") {
+    sendJson(res, 200, { sessions: listSessions() });
+    return;
+  }
+
+  if (pathname.startsWith("/api/agent/sessions/")) {
+    const rawSession = pathname.slice("/api/agent/sessions/".length);
+    const sessionId = decodeURIComponent(rawSession.replace(/\/logs$/, ""));
+    const isLogs = rawSession.endsWith("/logs");
+    if (isLogs) {
+      sendJson(res, 200, { logs: listExecutionLogs(sessionId) });
+      return;
+    }
+    const session = loadSession(sessionId);
+    if (!session) {
+      sendJson(res, 404, { error: "session_not_found" });
+      return;
+    }
+    sendJson(res, 200, { session });
+    return;
+  }
+
   if (pathname === "/api/projects") {
     const projects = listAllKnowledge()
       .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
@@ -139,8 +259,19 @@ async function handleRequest(
   }
 
   if (pathname.startsWith("/api/projects/")) {
-    const rawName = pathname.slice("/api/projects/".length);
-    const projectName = decodeURIComponent(rawName);
+    const parts = pathname.slice("/api/projects/".length).split("/").filter(Boolean);
+    const projectName = decodeURIComponent(parts[0] || "");
+    const suffix = parts[1];
+    if (suffix === "tools") {
+      const registry = loadToolRegistry(projectName);
+      sendJson(res, 200, { tools: registry?.tools || [] });
+      return;
+    }
+    if (suffix === "workflows") {
+      const registry = loadWorkflowRegistry(projectName);
+      sendJson(res, 200, { workflows: registry?.workflows || [] });
+      return;
+    }
     const knowledge = loadKnowledge(projectName);
 
     if (!knowledge) {
